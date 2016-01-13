@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Tower stack</title>
+</head>
+<body onload="onLoad()">
+
+<script>
+
+/* blocks colors */
+var colors = [ "red", "green", "blue", "yellow", "purple", "cyan",
+		"orange"];
+var max_tower_height = 14;
+var max_levels = 7;  // number of levels
+var block_width_0 = 30;
+var block_width_per_level = 10;
+var block_width = (block_width_0+block_width_per_level*max_levels);
+var block_height = 30;
+var block_font_height=20; // px
+var block_font = block_font_height.toString()+"px helvetica"
+var towers_x_delta=30;
+var towers_y_delta=2;
+var canvas_dx = 30;
+var canvas_dy = 30;
+var source_tower = null;
+
+// 2d array colors.length+1 x max_tower_height
+var pieces = array();
+
+function create_block(lev, color) {
+	// Create the canvas
+	var canvas = document.createElement("canvas");
+	var ctx = canvas.getContext("2d");
+	var w = block_width_0+lev*block_width_per_level;
+	var h = block_height;
+
+	canvas.width = w;
+	canvas.height = h;
+
+	ctx.fillStyle = color;
+	ctx.fillRect(0, 0, w, h);
+
+	ctx.strokeStyle="black";
+	ctx.rect(0, 0, w, h);
+	ctx.stroke();
+
+	ctx.font = block_font;
+	ctx.fillStyle = "black";
+	ctx.textAlign = "center";
+	ctx.fillText((lev+1).toString(), w/2,
+		h-((h-block_font_height)/2));
+
+	return canvas;
+}
+
+function init_pieces() {
+	pieces = [];
+
+	var c;
+	for (c = 0 ; c < (colors.length+1) ; c++) {
+		var r;
+		pieces.push([]);
+		for (r = 0 ; r < max_tower_height ; r++)
+			pieces[c].push();
+	}
+
+	for (c = 0 ; c < (colors.length+1) ; c++) {
+		var r;
+		for (r = 0 ; r < max_tower_height ; r++) {
+			if ( r < (max_tower_height - max_levels) ||
+			     c >= colors.length ) {
+					pieces[c][r] = {
+						color: "black",
+						level: -1
+					};
+					continue;
+			}
+
+			pieces[c][r] = {
+				color: colors[c],
+				level: r-(max_tower_height-max_levels)
+			};
+		}
+	}
+
+}
+
+function init_game( ) {
+
+	var nr_towers = colors.length+1;
+	var c_width = nr_towers * (block_width + towers_x_delta) +
+		2 * canvas_dx - towers_x_delta;
+	var c_height = (block_height+towers_y_delta)*max_tower_height+
+		2 * canvas_dy - towers_y_delta;
+
+	var dst = document.getElementById("gamearea");
+	dst.width = c_width;
+	dst.height = c_height;
+
+	init_pieces();
+	do_redraw();
+
+}
+
+function get_x(col) {
+	return  block_width/2+canvas_dx +col*(block_width+towers_x_delta);
+}
+
+function get_y(row) {
+	return  block_height/2+canvas_dy +row*(block_height+towers_y_delta);
+}
+
+function do_redraw() {
+	var dst = document.getElementById("gamearea");
+	var ctx=dst.getContext("2d");
+
+	ctx.clearRect(0, 0, dst.width, dst.height);
+
+	var c;
+	for (c = 0 ; c < (colors.length+1) ; c++) {
+		var r;
+		for (r = 0 ; r < max_tower_height ; r++) {
+			p = pieces[c][r];
+			if (p.level < 0)
+				continue;
+
+			var b = create_block(p.level, p.color);
+			var x = get_x(c);
+			var y = get_y(r);
+			ctx.drawImage(b, x-b.width/2, y-b.height/2);
+		}
+	}
+}
+
+function get_nr_pieces(col) {
+
+	var ret = 0;
+	var i = 0;
+
+	for ( i = 0 ; i < max_tower_height ; i++)
+		if (pieces[col][i].level>=0)
+			ret++;
+	return ret;
+}
+
+function get_top_piece(col) {
+	var ret = 0;
+	var i = 0;
+
+	for ( i = 0 ; i < max_tower_height ; i++)
+		if (pieces[col][i].level>=0)
+			return i;
+
+	return max_tower_height;
+
+}
+
+
+
+function __move_piece(from, to, level_from_start, count, level_to) {
+	var i;
+	for (i=0 ; i < count ; i++) {
+		pieces[to][level_to-1-i] = pieces[from][level_from_start-i];
+		pieces[from][level_from_start-i] = {
+			color: "black",
+			level: -1
+		}
+	}
+}
+
+
+/*
+ * take the top-est pieces
+ */
+function move_piece(from, to, howmany=1000) {
+
+	if (from == to)
+		return false;
+
+	/* no move from */
+	if (get_nr_pieces(from) <= 0)
+		return false;
+
+	if (get_nr_pieces(to) >= (max_tower_height-2))
+		return false;
+
+	var level_from_end = get_top_piece(from);
+	var level_to = get_top_piece(to);
+	var level_from_start = level_from_end;
+
+	var c=1;
+	while (howmany--) {
+		var next = level_from_start+1;
+
+		/* exist pieces */
+		if (next>=max_tower_height)
+				break;
+		/* different color */
+		if (pieces[from][level_from_start].color !=
+			pieces[from][next].color)
+				break;
+		/* no sequential number */
+		if (pieces[from][level_from_start].level !=
+			pieces[from][next].level-1)
+				break;
+		/* no space in destination */
+		if (level_to-c<0)
+			break;
+		level_from_start = next;
+		c++;
+	}
+
+	__move_piece(from, to, level_from_start, c, level_to);
+
+	return true;
+}
+
+/*
+ * take the top-est piece
+ */
+function compute_shuffle_depth(from, to, howmany) {
+
+	if (from == to)
+		return false;
+
+	/* no move from */
+	if (get_nr_pieces(from) <= 0)
+		return false;
+
+	if (get_nr_pieces(to) >= (max_tower_height-2))
+		return false;
+
+	var level_from_end = get_top_piece(from);
+	var level_to = get_top_piece(to);
+	var level_from_start = level_from_end;
+
+	var c=0;
+	while (howmany--) {
+		var next = level_from_start+1;
+
+		/* no space in destination */
+		if (level_to-c<0)
+			break;
+
+		/* exist pieces */
+		if (next>=max_tower_height) {
+			level_from_start = next;
+			c++;
+			break;
+		}
+		/* different color */
+		if (pieces[from][level_from_start].color !=
+			pieces[from][next].color)
+				break;
+		/* no sequential number */
+		if (pieces[from][level_from_start].level !=
+			pieces[from][next].level-1) {
+				level_from_start = next;
+				c++;
+				break;
+		}
+
+		level_from_start = next;
+		c++;
+	}
+
+	if (c>0) {
+		__move_piece(from, to, level_from_start-1, c, level_to);
+		return true;
+	} else {
+		return false;
+	}
+}
+
+function shuffle() {
+	var i = 1;
+	var nr_towers = colors.length+1;
+
+	while (i--) {
+		var from = Math.floor(Math.random()*nr_towers);
+		var to = Math.floor(Math.random()*nr_towers);
+		var nr = Math.floor(Math.random()*max_levels+1);
+
+		var k;
+		for (k= 0 ; k < (colors.length+1) ; k++) {
+			var from2 = (from+k) % (colors.length+1);
+			var moved=false;
+			var j;
+			for (j= 0 ; j < (colors.length+1) ; j++) {
+				var to2 = (to+j) % (colors.length+1);
+				if (!compute_shuffle_depth(from2, to2, nr)) {
+					continue;
+				} else {
+					do_redraw();
+					moved=true;
+					break;
+				}
+			}
+			if (moved)
+				break;
+		}
+	}
+}
+
+
+function select_column(column) {
+
+	var dst = document.getElementById("gamearea");
+	var ctx=dst.getContext("2d");
+
+	var x = get_x(column);
+	var y = get_y(max_tower_height);
+
+	ctx.fillStyle = "fuchsia";
+	ctx.fillRect(x-block_width/2, y-block_height/2,
+		block_width, block_height);
+
+}
+
+/*
+ * copied from http://jsfiddle.net/4Lanc/
+ */
+function onClick(e) {
+	var element = document.getElementById('gamearea');
+	var offsetX = 0, offsetY = 0
+
+	if (element.offsetParent) {
+		do {
+			offsetX += element.offsetLeft;
+			offsetY += element.offsetTop;
+		} while ((element = element.offsetParent));
+	}
+
+	var x = e.pageX - offsetX;
+	var y = e.pageY - offsetY;
+
+	/* select source and/or dest */
+	var column = Math.floor(
+		(x-block_width/2+canvas_dx)/(block_width+towers_x_delta)
+	);
+
+	if (column < 0 || column >= (colors.length+1)) {
+		if (source_tower != null) {
+			source_tower = null;
+			do_redraw();
+		}
+	} else if (source_tower==null) {
+		select_column(column);
+		source_tower = column;
+	} else {
+		if (source_tower != column)
+			move_piece(source_tower, column);
+		source_tower = null;
+		do_redraw();
+	}
+}
+
+
+function onLoad() {
+	init_game();
+	var c = document.getElementById('gamearea');
+	c.addEventListener("click", onClick, false);
+}
+
+</script>
+
+<center>
+<h1>
+Tower stack
+</h1>
+
+<div>
+	<canvas id="gamearea" width=1000 height=400
+		style="border:1px solid #d3d3d3;">
+	</canvas>
+</div>
+<table>
+	<tr>
+		<!--<td>
+			 <button onclick="do_redraw()">Prova</button>
+		</td>
+		<td>
+			 <button onclick="init_game()">Init game</button>
+		</td>-->
+		<td>
+			 <button onclick="shuffle()">Shuffle</button>
+		</td>
+	</tr>
+</table>
+</center>
+
+</body>
+</html>
